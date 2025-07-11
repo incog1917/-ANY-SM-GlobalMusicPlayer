@@ -1,5 +1,5 @@
 
-# **SourceMod Music Plugin**
+# **\[ANY\]-SM-GlobalMusicPlayer**
 
 ## **🎵 Comprehensive Server-Wide Background Music**
 
@@ -32,7 +32,22 @@ This SourceMod plugin provides a robust and highly configurable system for playi
   * \!musicplay: Start music playback.  
   * \!musicskip: Skip to the next track.  
   * \!musicstop: Stop all music playback.  
-  * Permissions are managed via SourceMod admin flags (e.g., ADMFLAG\_GENERIC).  
+  * **Admin Access:** To use these commands, you need to have administrator privileges on your SourceMod server. This plugin requires the musicplugin\_access flag, which defaults to ADMFLAG\_GENERIC.  
+    **How to Become an Admin:**  
+    1. **Edit addons/sourcemod/configs/admins\_simple.ini:**  
+       * Open this file with a text editor.  
+       * Add an entry for yourself. Common methods include:  
+         * **By SteamID64:** "STEAM\_1:0:12345678" "99:z" (Replace with your actual SteamID64 and desired flags. 99:z grants all flags including z for custom flags like musicplugin\_access).  
+         * **By IP Address:** "127.0.0.1" "99:z" (Replace with your server-facing IP).  
+         * **By Name (less secure):** "YourPlayerName" "99:z" (Requires auth "name" in the entry).  
+       * Ensure the flags you assign include z to grant custom admin flags.  
+       * Save the file.  
+    2. **Reload Admins:**  
+       * In your server's console (or via RCON), type sm\_reloadadmins.  
+       * Alternatively, restart your server.  
+    3. **Verify Access:**  
+       * Once in-game, type sm\_who in your console to see if your name appears with admin flags.  
+       * Attempt to use an admin command like \!musicplay.  
 * **Player Information Commands:**  
   * \!musiclist: Displays a list of all loaded music tracks.  
   * \!musicsettings: Shows the player's current music volume.  
