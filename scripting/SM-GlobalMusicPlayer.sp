@@ -1011,18 +1011,53 @@ public bool LoadTracks()
         char durationStr[16];
         char trackname[PLATFORM_MAX_PATH];
 
-        int firstSpace = FindCharInString(line, ' ');
-        if (firstSpace == -1)
-        {
-            LogError("[MusicPlugin] ⚠ Invalid line format in musiclist.txt (missing first space for duration): %s (Line: %d)", line, lineNum);
-            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Missing first space. Skipping.", lineNum);
-            continue;
-        }
+        int currentPos = 0;
+        int len = strlen(line);
+        int firstDelimiterPos = -1; // To store the position of the first space or closing quote after filename
 
-        strcopy(filename, sizeof(filename), line);
-        filename[firstSpace] = '\0';
-        TrimString(filename);
-        PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed filename: '%s'", lineNum, filename);
+        // Attempt to parse filename (either quoted or unquoted)
+        if (line[currentPos] == '"')
+        {
+            // Quoted filename parsing
+            currentPos++; // Move past the opening quote
+            int filenameEndQuote = FindCharInString(line, '"', currentPos);
+            if (filenameEndQuote == -1)
+            {
+                LogError("[MusicPlugin] ⚠ Invalid line format in musiclist.txt (missing closing quote for filename): %s (Line: %d)", line, lineNum);
+                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Missing closing quote for filename. Skipping.", lineNum);
+                continue;
+            }
+            int filenameLen = filenameEndQuote - currentPos;
+            if (filenameLen <= 0 || filenameLen >= sizeof(filename))
+            {
+                LogError("[MusicPlugin] ⚠ Invalid filename length in musiclist.txt: %s (Line: %d)", line, lineNum);
+                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Invalid filename length. Skipping.", lineNum);
+                continue;
+            }
+            strcopy(filename, sizeof(filename), line[currentPos]);
+            filename[filenameLen] = '\0';
+            TrimString(filename);
+            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed quoted filename: '%s'", lineNum, filename);
+
+            currentPos = filenameEndQuote + 1; // Move past filename closing quote
+            firstDelimiterPos = currentPos; // The position right after the closing quote
+        }
+        else
+        {
+            // Unquoted filename parsing (up to first space)
+            firstDelimiterPos = FindCharInString(line, ' ');
+            if (firstDelimiterPos == -1)
+            {
+                LogError("[MusicPlugin] ⚠ Invalid line format in musiclist.txt (missing space after unquoted filename): %s (Line: %d)", line, lineNum);
+                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Missing space after unquoted filename. Skipping.", lineNum);
+                continue;
+            }
+            strcopy(filename, sizeof(filename), line);
+            filename[firstDelimiterPos] = '\0';
+            TrimString(filename);
+            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed unquoted filename: '%s'", lineNum, filename);
+            currentPos = firstDelimiterPos; // Start from the space
+        }
 
         bool isDuplicate = false;
         for (int i = 0; i < g_TrackCount; i++)
@@ -1042,46 +1077,34 @@ public bool LoadTracks()
             continue;
         }
 
-        int secondSpace = FindCharInString(line, ' ', firstSpace + 1);
-
-        if (secondSpace == -1)
+        // Move past any spaces after the filename/quote
+        while (currentPos < len && line[currentPos] == ' ')
         {
-            int durationStart = firstSpace + 1;
-            strcopy(durationStr, sizeof(durationStr), line[durationStart]);
-            TrimString(durationStr);
-            strcopy(trackname, sizeof(trackname), filename);
-            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: No second space. Parsed duration: '%s', trackname (fallback): '%s'", lineNum, durationStr, trackname);
+            currentPos++;
         }
-        else
-        {
-            int durationLen = secondSpace - (firstSpace + 1);
-            if (durationLen > 0 && durationLen < sizeof(durationStr))
-            {
-                strcopy(durationStr, sizeof(durationStr), line[firstSpace + 1]);
-                durationStr[durationLen] = '\0';
-                TrimString(durationStr);
-                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed duration string: '%s'", lineNum, durationStr);
-            }
-            else
-            {
-                LogError("[MusicPlugin] ⚠ Could not parse duration from line: %s (Line: %d)", line, lineNum);
-                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Could not parse duration. Skipping.", lineNum);
-                continue;
-            }
 
-            int trackNameStart = secondSpace + 1;
-            if (trackNameStart < strlen(line))
-            {
-                strcopy(trackname, sizeof(trackname), line[trackNameStart]);
-                TrimString(trackname);
-                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed track name: '%s'", lineNum, trackname);
-            }
-            else
-            {
-                strcopy(trackname, sizeof(trackname), filename);
-                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: No track name found after duration, falling back to filename: '%s'", lineNum, trackname);
-            }
+        // 2. Parse duration (numeric string)
+        int durationStart = currentPos;
+        while (currentPos < len && line[currentPos] != ' ' && line[currentPos] != '"')
+        {
+            currentPos++;
         }
+        int durationEnd = currentPos;
+
+        int durationLen = durationEnd - durationStart;
+        if (durationLen <= 0 || durationLen >= sizeof(durationStr))
+        {
+            LogError("[MusicPlugin] ⚠ Could not parse duration from line (invalid length): %s (Line: %d)", line, lineNum);
+            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Invalid duration length. Skipping.", lineNum);
+            continue;
+        }
+        for (int i = 0; i < durationLen; i++)
+        {
+            durationStr[i] = line[durationStart + i];
+        }
+        durationStr[durationLen] = '\0';
+        TrimString(durationStr);
+        PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed duration string: '%s'", lineNum, durationStr);
 
         int duration = StringToInt(durationStr);
         if (duration <= 0)
@@ -1089,6 +1112,42 @@ public bool LoadTracks()
             duration = 15;
             PrintToServer("[MusicPlugin] ℹ️ Invalid duration for '%s', defaulting to %d seconds. (Line: %d)", filename, duration, lineNum);
             PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Invalid duration. Defaulting to %d. Please ensure musiclist.txt durations are accurate.", lineNum, duration);
+        }
+
+        // Move past any spaces after the duration
+        while (currentPos < len && line[currentPos] == ' ')
+        {
+            currentPos++;
+        }
+
+        // 3. Parse track name (quoted string, optional)
+        if (currentPos < len && line[currentPos] == '"')
+        {
+            currentPos++; // Move past opening quote
+            int tracknameEndQuote = FindCharInString(line, '"', currentPos);
+            if (tracknameEndQuote == -1)
+            {
+                LogError("[MusicPlugin] ⚠ Invalid line format in musiclist.txt (missing closing quote for track name): %s (Line: %d)", line, lineNum);
+                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Missing closing quote for track name. Skipping.", lineNum);
+                continue;
+            }
+            int tracknameLen = tracknameEndQuote - currentPos;
+            if (tracknameLen <= 0 || tracknameLen >= sizeof(trackname))
+            {
+                LogError("[MusicPlugin] ⚠ Invalid track name length in musiclist.txt: %s (Line: %d)", line, lineNum);
+                PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Invalid track name length. Skipping.", lineNum);
+                continue;
+            }
+            strcopy(trackname, sizeof(trackname), line[currentPos]);
+            trackname[tracknameLen] = '\0';
+            TrimString(trackname);
+            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: Parsed track name: '%s'", lineNum, trackname);
+        }
+        else
+        {
+            // If no quoted track name, use filename as fallback
+            strcopy(trackname, sizeof(trackname), filename);
+            PrintToServer("[MusicPlugin Debug] [LoadTracks] Line %d: No quoted track name found, falling back to filename: '%s'", lineNum, trackname);
         }
 
         Format(g_TrackList[g_TrackCount], PLATFORM_MAX_PATH, "music/%s", filename);
